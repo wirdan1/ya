@@ -12,29 +12,43 @@ class PluginLoader {
   }
 
   loadPlugins() {
-    const pluginsDir = path.join(__dirname, '../../../plugins');
-    if (!fs.existsSync(pluginsDir)) return;
+    const pluginsDir = path.join(process.cwd(), 'plugins'); // Tambah ini di atas
+    if (!fs.existsSync(pluginsDir)) {
+      logger.warn('Plugins directory not found at: ' + pluginsDir);
+      return;
+    }
 
     fs.readdirSync(pluginsDir, { withFileTypes: true })
       .filter(d => d.isDirectory())
       .forEach(catDir => {
         const category = catDir.name;
         const catPath = path.join(pluginsDir, category);
+        if (!fs.existsSync(catPath)) {
+          logger.warn(`Category directory not found: ${catPath}`);
+          return;
+        }
+        
         fs.readdirSync(catPath)
           .filter(f => f.endsWith('.js'))
           .forEach(file => {
             const pluginPath = path.join(catPath, file);
-            const plugin = require(pluginPath);
-            if (plugin.name && plugin.run) {
-              this.register(plugin, category);
-              logger.info(`Loaded: ${plugin.name}`);
+            try {
+              const plugin = require(pluginPath);
+              if (plugin.name && plugin.run) {
+                this.register(plugin, category);
+                logger.info(`Loaded plugin: ${plugin.name} in ${category}`);
+              } else {
+                logger.warn(`Invalid plugin format in: ${pluginPath}`);
+              }
+            } catch (err) {
+              logger.error(`Failed to load plugin ${pluginPath}: ${err.message}`);
             }
           });
       });
   }
 
   register(plugin, category) {
-    const route = `/${category}/${plugin.name.toLowerCase()}`;
+    const route = `/${category}/${plugin.name.toLowerCase().replace(/\s+/g, '-')}`;
     const schema = Joi.object(plugin.params.reduce((obj, p) => ({ ...obj, [p]: Joi.string().required() }), {}));
 
     this.router.get(route, async (req, res, next) => {
